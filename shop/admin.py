@@ -1,14 +1,17 @@
 """Django admin configuration for categories, products, and orders."""
 
 from django.contrib import admin
+from django.db.models import QuerySet
+from django.http import HttpRequest
 from django.utils.html import format_html
 
-from .models import Category, Product, Order, OrderItem
+from .models import Category, Order, OrderItem, Product
 
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     """Admin for product categories."""
+
     search_fields = ["name"]
     list_display = ["name"]
     ordering = ["name"]
@@ -17,6 +20,7 @@ class CategoryAdmin(admin.ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     """Admin for products with small thumbnail preview."""
+
     list_display = ["name", "category", "price", "thumb_preview"]
     list_filter = ["category"]
     search_fields = ["name", "description", "category__name"]
@@ -25,14 +29,14 @@ class ProductAdmin(admin.ModelAdmin):
     list_select_related = ["category"]
     list_per_page = 50
 
-    def get_queryset(self, request):
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Product]:
         # Avoid N+1 on category in the changelist
         qs = super().get_queryset(request)
         return qs.select_related("category")
 
-    @staticmethod
-    def _render_thumb(url: str, height: int) -> str:
-        return format_html('<img src="{}" alt="thumb" height="{}">', url, height)
+    # @staticmethod
+    # def _render_thumb(url: str, height: int) -> str:
+    #     return format_html('<img src="{}" alt="thumb" height="{}">', url, height)
 
     @admin.display(description="Thumbnail")
     def thumb_preview(self, obj: Product) -> str:
@@ -51,6 +55,7 @@ class ProductAdmin(admin.ModelAdmin):
 
 class OrderItemInline(admin.TabularInline):
     """Inline editor for order line items."""
+
     model = OrderItem
     extra = 0
     autocomplete_fields = ["product"]
@@ -60,6 +65,7 @@ class OrderItemInline(admin.TabularInline):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Admin for orders with inline items and quick actions."""
+
     list_display = [
         "id",
         "customer",
@@ -77,15 +83,15 @@ class OrderAdmin(admin.ModelAdmin):
     list_select_related = ["customer"]
     list_per_page = 50
 
-    def get_queryset(self, request):
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Order]:
         # Avoid N+1 on customer in the changelist
         qs = super().get_queryset(request)
         return qs.select_related("customer")
 
     @admin.action(description="Mark as paid")
-    def mark_paid(self, request, queryset):
+    def mark_paid(self, request: HttpRequest, queryset: QuerySet[Order]) -> None:
         queryset.update(is_paid=True)
 
     @admin.action(description="Mark as unpaid")
-    def mark_unpaid(self, request, queryset):
+    def mark_unpaid(self, request: HttpRequest, queryset: QuerySet[Order]) -> None:
         queryset.update(is_paid=False)

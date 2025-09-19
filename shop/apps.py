@@ -9,6 +9,7 @@ from django.utils.translation import gettext_lazy as _
 
 class ShopConfig(AppConfig):
     """Django app config for the Shop app."""
+
     default_auto_field = "django.db.models.BigAutoField"
     name = "shop"
     verbose_name = _("Shop")

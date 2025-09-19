@@ -3,14 +3,8 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import (
-    CategoryViewSet,
-    OrderViewSet,
-    ProductViewSet,
-    TopProductsStatsView
-)
+from .views import CategoryViewSet, OrderViewSet, ProductViewSet, TopProductsStatsView
 
-# Router with standard DRF viewset routes
 router = DefaultRouter()
 router.register(r"products", ProductViewSet, basename="product")
 router.register(r"categories", CategoryViewSet, basename="category")

@@ -2,15 +2,14 @@
 
 import logging
 from decimal import Decimal
-from typing import List
+from typing import Any, List, Optional
 
 from django.core.mail import send_mail
-from django.db import DatabaseError
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Category, Product, Order, OrderItem
+from .models import Category, Order, OrderItem, Product
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class ProductSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "thumbnail", "created_at", "category_name"]
 
     @staticmethod
-    def validate_price(value):
+    def validate_price(value: Optional[Decimal]) -> Decimal:
         """Ensure price is non-negative (model has a validator too)."""
         if value is None or value < 0:
             raise serializers.ValidationError("Price must be non-negative.")
@@ -65,12 +64,14 @@ class ProductSerializer(serializers.ModelSerializer):
 
 class OrderItemCreateSerializer(serializers.Serializer):
     """Input for a single order line when creating an order."""
+
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all())
     quantity = serializers.IntegerField(min_value=1)
 
 
 class OrderDetailItemSerializer(serializers.ModelSerializer):
     """Read-only representation of a single order line."""
+
     product_name = serializers.CharField(source="product.name", read_only=True)
 
     class Meta:
@@ -80,6 +81,7 @@ class OrderDetailItemSerializer(serializers.ModelSerializer):
 
 class OrderDetailSerializer(serializers.ModelSerializer):
     """Read-only representation of an order with its items."""
+
     items = OrderDetailItemSerializer(many=True, read_only=True)
 
     class Meta:
@@ -108,6 +110,7 @@ class OrderCreateSerializer(serializers.Serializer):
     Output:
     - id, total_price, payment_due_date, created_at
     """
+
     # input
     full_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     shipping_address = serializers.CharField()
@@ -126,8 +129,10 @@ class OrderCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Items list must not be empty.")
         return items
 
-    def create(self, validated_data):
-        """Create order + lines, compute totals, set due date (+5 days) and send a confirmation email."""
+    def create(self, validated_data: dict[str, Any]) -> Order:
+        """
+        Create order + lines, compute totals, set due date (+5 days) and send a confirmation email.
+        """
         user = self.context["request"].user
         full_name = validated_data.pop("full_name", "").strip()
         items_in = validated_data.pop("items")
@@ -153,6 +158,7 @@ class OrderCreateSerializer(serializers.Serializer):
             # Ensure payment due date is set (+5 days from today)
             if not order.payment_due_date:
                 from datetime import timedelta
+
                 order.payment_due_date = timezone.localdate() + timedelta(days=5)
 
             order.save(update_fields=["total_price", "payment_due_date"])
@@ -182,7 +188,7 @@ class OrderCreateSerializer(serializers.Serializer):
         return order
 
     @staticmethod
-    def _send_confirmation_email(user, order: Order) -> None:
+    def _send_confirmation_email(user: Any, order: Order) -> None:
         """Send a plain-text confirmation email (console backend in dev)."""
         lines = [
             f"Hi {user.get_full_name() or user.username},",
@@ -208,11 +214,12 @@ class OrderCreateSerializer(serializers.Serializer):
 
 class TopProductsQuerySerializer(serializers.Serializer):
     """Query parameters for the 'top products' stats endpoint."""
+
     date_from = serializers.DateField()
     date_to = serializers.DateField()
     limit = serializers.IntegerField(min_value=1, max_value=100, default=10)
 
-    def validate(self, attrs):
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         if attrs["date_from"] > attrs["date_to"]:
             raise serializers.ValidationError("date_from must not be after date_to.")
         return attrs
@@ -220,6 +227,7 @@ class TopProductsQuerySerializer(serializers.Serializer):
 
 class TopProductStatsSerializer(serializers.Serializer):
     """Single row in the 'top products' result."""
+
     product_id = serializers.IntegerField()
     product_name = serializers.CharField()
     units_ordered = serializers.IntegerField()

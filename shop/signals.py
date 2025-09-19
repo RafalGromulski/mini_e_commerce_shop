@@ -10,6 +10,7 @@
 
 import logging
 from contextlib import suppress
+from typing import Any
 
 from django.core.exceptions import SuspiciousFileOperation
 from django.db.models.signals import post_delete, post_save
@@ -25,7 +26,9 @@ logger = logging.getLogger(__name__)
     sender=OrderItem,
     dispatch_uid="orderitem_recalculate_total_on_save",
 )
-def recalc_order_total_on_orderitem_save(sender, instance: OrderItem, **kwargs) -> None:
+def recalc_order_total_on_orderitem_save(
+    sender: type[OrderItem], instance: OrderItem, **kwargs: Any
+) -> None:
     """Recompute the parent order's total after saving an OrderItem."""
     instance.order.recalculate_totals()
 
@@ -35,7 +38,9 @@ def recalc_order_total_on_orderitem_save(sender, instance: OrderItem, **kwargs) 
     sender=OrderItem,
     dispatch_uid="orderitem_recalculate_total_on_delete",
 )
-def recalc_order_total_on_orderitem_delete(sender, instance: OrderItem, **kwargs) -> None:
+def recalc_order_total_on_orderitem_delete(
+    sender: type[OrderItem], instance: OrderItem, **kwargs: Any
+) -> None:
     """Recompute the parent order's total after deleting an OrderItem."""
     instance.order.recalculate_totals()
 
@@ -45,7 +50,9 @@ def recalc_order_total_on_orderitem_delete(sender, instance: OrderItem, **kwargs
     sender=Product,
     dispatch_uid="product_delete_cleanup_files",
 )
-def cleanup_product_files_after_delete(sender, instance: Product, **kwargs) -> None:
+def cleanup_product_files_after_delete(
+    sender: type[Product], instance: Product, **kwargs: Any
+) -> None:
     """
     Delete product image files after the Product row is removed.
 

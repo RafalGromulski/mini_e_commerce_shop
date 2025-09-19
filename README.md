@@ -1,255 +1,281 @@
-# E‑commerce API (Django 4 + DRF)
+# 🛍️ Mini E-Commerce Shop API
 
-A minimal e‑commerce REST API built with **Django**, **Django REST Framework**, **SQLite**, and **Pillow**. It supports public product browsing with filtering/sorting/pagination, seller‑only product management, authenticated order placement with email confirmations, and a sales stats endpoint. Optional **Celery + Redis** sends payment reminders one day before the due date.
+![Python](https://img.shields.io/badge/python-3.13-blue.svg)
+![Django](https://img.shields.io/badge/django-5.1%2B-green.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
----
-
-## Features
-- **Products & Categories**  
-  Public product list & detail, filtering, sorting, pagination; automatic image thumbnail (JPEG, max width 200px).
-- **Orders**  
-  Authenticated users can place orders and see their own; sellers can see all orders. Order confirmation email (console in dev).
-- **Stats**  
-  Top‑N most frequently ordered products within a date range.
-- **Permissions**  
-  Read for everyone. Writes require membership in the **seller** group (configurable via `SHOP_SELLER_GROUP`).
-- **Docs**  
-  OpenAPI schema + Swagger UI + ReDoc.
+A minimalist REST API for an e-commerce shop built with **Django 5.1+** and **Django REST Framework**.  
+It supports a public product catalog (with filtering/sorting/pagination), seller-only product management, authenticated order placement with confirmation e-mails, sales statistics, and optional **Celery + Redis** for payment reminders.
 
 ---
 
-## Tech Stack
-- Python 3.11+ (tested also on 3.13)
-- Django 4.2+
-- Django REST Framework 3.14+
-- django‑filter, drf‑spectacular
-- Pillow (thumbnail generation)
-- django‑environ (env‑based config)
-- Celery 5.x + Redis (optional, for reminders)
-- SQLite (default in dev; pluggable via `DATABASE_URL`)
+## ✨ Features
+
+- **Products & Categories** – public browsing, filtering, sorting, pagination; automatic image thumbnails (JPEG, max width 200px).  
+- **Orders** – authenticated users place orders; sellers see all. Confirmation e-mail after creation.  
+- **Statistics** – top-N most ordered products by date range (seller-only).  
+- **Permissions** – read for all, write restricted to the `seller` group.  
+- **Docs** – OpenAPI schema + Swagger UI + ReDoc.  
+- **Async** – Celery + Redis tasks for payment reminders.  
 
 ---
 
-## Quickstart
+## 🛠️ Tech Stack
 
-### 1) Clone & install
+- Python **3.13**
+- Django **5.1+**
+- Django REST Framework **3.15+**
+- django-filter, drf-spectacular
+- Pillow (image handling)
+- django-environ (environment config)
+- Celery **5.5+** + Redis (optional)
+- SQLite (default) / Postgres/MySQL via `DATABASE_URL`
+
+---
+
+## 🚀 Quickstart (Development)
+
+### 1. Clone & install
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
-pip install --upgrade pip
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
+pip install -U pip
+pip install pip-tools
+pip-compile requirements.in
+pip-compile requirements-dev.in
 pip install -r requirements-dev.txt
 ```
 
-### 2) Configure environment
-Copy the example and edit values as needed:
+### 2. Configure environment
 ```bash
 cp .env.example .env
 ```
-Mandatory:
-- `SECRET_KEY` – set a non‑default value in non‑debug environments.
 
-Optional highlights:
-- `SHOP_SELLER_GROUP` (default: `seller`) — group used to authorize write actions.
-- `EMAIL_*` — SMTP settings; default backend prints emails to console in dev.
-- `DATABASE_URL` — switch from SQLite to Postgres/MySQL if needed.
-- `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` — Redis URLs for Celery.
+> The `.env` file is not versioned (it is in `.gitignore`), and `.env.example` contains all the variables required to run the project.
 
-### 3) Migrate & create admin user
+Important variables:
+- `SECRET_KEY` — required in production
+- `DEBUG` — `1` or `0`
+- `DATABASE_URL` — e.g. `postgres://user:pass@localhost:5432/shop`
+- `SHOP_SELLER_GROUP` — default: `seller`
+- `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` — Redis connections
+
+> If you do not set `DATABASE_URL`, the project will use the default SQLite database (`db.sqlite3` in the project root).
+
+### 3. Migrate & create superuser
 ```bash
 python manage.py migrate
 python manage.py createsuperuser
 ```
 
-### 4) Run the app
+### 4. Run the app
 ```bash
 python manage.py runserver
 ```
-Visit:
-- Swagger UI: **`/api/docs/`**
-- ReDoc: **`/api/redoc/`**
-- OpenAPI schema (JSON/YAML): **`/api/schema/`** (`?format=yaml` available)
-- Admin: **`/admin/`**
 
-### 5) Create a seller group and add a user
-```python
-# python manage.py shell
-from django.contrib.auth.models import Group, User
-
-Group.objects.get_or_create(name="seller")
-u = User.objects.get(username="<your_username>")
-u.groups.add(Group.objects.get(name="seller"))
-u.save()
-```
-> Note: Django admin access still requires `is_staff=True` (independent of API permissions).
+Docs:
+- Swagger UI → [/api/docs/](http://127.0.0.1:8000/api/docs/)
+- ReDoc → [/api/redoc/](http://127.0.0.1:8000/api/redoc/)
+- OpenAPI schema → [/api/schema/](http://127.0.0.1:8000/api/schema/)
+- Admin → [/admin/](http://127.0.0.1:8000/admin/)
 
 ---
 
-## Configuration
-
-Configuration lives in `config/settings.py` and is driven by environment variables (loaded from `.env` in development via **django‑environ**).
-
-Key variables:
-- `DEBUG` (`true|false`)
-- `SECRET_KEY`
-- `ALLOWED_HOSTS` (comma‑separated)
-- `CSRF_TRUSTED_ORIGINS` (comma‑separated full origins)
-- `DATABASE_URL` (e.g., `postgres://USER:PASSWORD@HOST:5432/DBNAME`)
-- `EMAIL_BACKEND` / `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` / `EMAIL_USE_TLS` / `EMAIL_USE_SSL`
-- `SHOP_SELLER_GROUP` (default: `seller`)
-- `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` (default Redis on localhost)
-
-Media files are served from `MEDIA_ROOT` in development; thumbnails are automatically generated to JPEG with max width 200px.
-
----
-
-## API Overview
+## 📦 API Overview
 
 ### Categories
-`/api/categories/`
-- **GET** list (public)
-- **POST** create (seller)
-- `/api/categories/{id}/` — **GET** retrieve (public), **PUT/PATCH/DELETE** (seller)
+- `GET /api/categories/` – list (public)  
+- `POST /api/categories/` – create (seller)  
+- `GET /api/categories/{id}/`, `PUT/PATCH/DELETE` – detail (seller for write)  
 
 ### Products
-`/api/products/`
-- **GET** list (public) with filtering, sorting, pagination
-- **POST** create (seller; supports multipart for image upload)
-- `/api/products/{id}/` — **GET** detail (public), **PUT/PATCH/DELETE** (seller)
-
-**Filtering params**
-- `name` — case‑insensitive contains on product name
-- `description` — case‑insensitive contains
-- `category` — category ID
-- `category_name` — case‑insensitive contains on category name
-- `price` — exact match
-- `min_price`, `max_price` — inclusive range
-
-**Ordering params**
-- `ordering=name` | `-name` | `price` | `-price` | `category__name` | `-category__name`
-
-**Pagination**
-- PageNumberPagination (`PAGE_SIZE=10` by default). Use `?page=2` etc.
-
-**Example — create product (multipart)**
-```bash
-curl -X POST http://127.0.0.1:8000/api/products/   -H "Cookie: sessionid=<your_session_cookie>"   -F "name=Coffee machine"   -F "description=Pressure machine"   -F "price=999.90"   -F "category=1"   -F "image=@/path/to/photo.jpg"
-```
+- `GET /api/products/` – list (filters: `name`, `description`, `category`, `category_name`, `min_price`, `max_price`; order: `name`, `price`, `category__name`)  
+- `POST /api/products/` – create (seller; multipart image upload)  
+- `GET /api/products/{id}/`, `PUT/PATCH/DELETE` – detail (seller for write)  
 
 ### Orders
-`/api/orders/`
-- **POST** create an order (authenticated user)
-- **GET** list current user’s orders (authenticated). Sellers see all orders.
-- `/api/orders/{id}/` — **GET** retrieve
+- `POST /api/orders/` – place order (authenticated)  
+- `GET /api/orders/` – user’s own orders; all for sellers  
+- `GET /api/orders/{id}/` – detail  
 
-**Create order — request body**
-```json
-{
-  "full_name": "John Smith",
-  "shipping_address": "Green St 1, 00-000 Warsaw",
-  "items": [
-    {"product": 1, "quantity": 2},
-    {"product": 3, "quantity": 1}
-  ]
-}
-```
-**Create order — response (201)**
-```json
-{
-  "id": 5,
-  "total_price": "2199.70",
-  "payment_due_date": "2025-01-15",
-  "created_at": "2025-01-10T12:34:56Z"
-}
-```
-> A plain‑text confirmation email is sent using the configured backend (console in dev).
-
-### Stats: Top Products
-`/api/stats/top-products/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&limit=N`
-- **GET** sellers only — returns an array of `{ product_id, product_name, units_ordered }` ordered by `units_ordered` desc.
-
-**Example**
-```bash
-curl "http://127.0.0.1:8000/api/stats/top-products/?date_from=2025-01-01&date_to=2025-01-31&limit=5"   -H "Cookie: sessionid=<your_session_cookie>"
-```
+### Statistics
+- `GET /api/stats/top-products/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&limit=N` – top ordered products (seller only)  
 
 ---
 
-## Celery (optional): Payment reminders
+## ⏱️ Celery (Optional)
 
-Start **Redis**, **Celery worker**, and **Celery beat**:
+Celery is used for asynchronous tasks (e.g. sending payment reminders).  
+There are two ways to run it locally:
+
+### Option A – Run manually
+
 ```bash
-# 1) Redis
-# docker run -p 6379:6379 --name redis -d redis:7
+# Start Redis
+docker run -d -p 6379:6379 redis:7-alpine
 
-# 2) Worker (in one terminal)
+# Start Celery worker
 celery -A config worker -l info
 
-# 3) Beat scheduler (in another terminal)
+# Start Celery beat scheduler
 celery -A config beat -l info
 ```
-A daily beat task runs at 09:00 (project timezone) and sends reminders for orders due **tomorrow**. You can trigger manually:
+
+> Daily beat runs at 09:00 (project timezone) to send payment reminders for orders due the next day.
+
+---
+
+### Option B – Use Docker Compose
+
+This project ships with a `docker-compose.yaml` for local development.
+
 ```bash
-python manage.py shell
->>> from shop.tasks import send_payment_reminders
->>> send_payment_reminders()          # synchronous test
-# or
->>> send_payment_reminders.delay()    # async via Celery
+# Start Redis, Celery worker, and Celery beat
+docker compose up -d redis celery-worker celery-beat
 ```
 
-> **Note:** In typical dev setups a single worker runs; if you run multiple workers, consider adding a claim/lock mechanism to avoid duplicate emails.
+Then in a separate terminal, run Django locally:
+
+```bash
+python manage.py runserver
+```
+
+Celery will now use the Redis service from Docker (`redis://redis:6379/0`).
 
 ---
 
-## Development
+## 🧪 Testing
 
-### Linting & typing (optional)
-You can add these to a `requirements-dev.txt`:
-```
-ruff
-mypy
-django-stubs
-djangorestframework-stubs
-typing-extensions
-```
-Example `mypy.ini`:
-```ini
-[mypy]
-plugins = mypy_django_plugin.main, mypy_drf_plugin.main
-ignore_missing_imports = True
-strict_optional = True
-warn_unused_ignores = True
-disallow_untyped_defs = True
-disallow_incomplete_defs = True
+Run the test suite:
 
-[mypy.plugins.django-stubs]
-django_settings_module = config.settings
+```bash
+pytest -q
 ```
 
-### Project structure (key files)
+Run with coverage:
+
+```bash
+pytest --cov=shop --cov-report=term-missing
 ```
-config/
-  settings.py
-  urls.py
-  celery.py
-shop/
-  models.py
-  serializers.py
-  views.py
-  filters.py
-  permissions.py
-  tasks.py
-  signals.py
+Run with coverage:
+
+```bash
+pytest --cov=shop --cov-report=term-missing
+```
+
+> The test suite uses **pytest** and **pytest-django**.  
+> Configuration is stored in `pyproject.toml` under `[tool.pytest.ini_options]`  
+> (default settings module: `config.settings.dev`).
+
+---
+
+## 🔧 Contributing
+
+1. Fork the repo and create your branch from `main`.
+2. Install dev dependencies:  
+   ```bash
+   pip install pip-tools
+   pip-compile requirements.in
+   pip-compile requirements-dev.in
+   pip install -r requirements-dev.txt
+   ```
+3. Run linting & typing checks:  
+   ```bash
+   pre-commit run --all-files
+   ```
+4. Ensure tests pass:  
+   ```bash
+   pytest -q
+   ```
+5. Submit a Pull Request 🚀
+
+---
+
+## 🌍 Deployment (Production)
+
+- **Settings**: use `config/settings/prod.py`
+- **Environment**: set `DJANGO_SETTINGS_MODULE=config.settings.prod`
+- **Database**: configure `DATABASE_URL` (Postgres/MySQL recommended)
+- **Static files**: run `python manage.py collectstatic`
+- **Celery**: start both worker and beat with a process manager (systemd, supervisord, or Docker)
+- **Gunicorn/Uvicorn**: recommended for WSGI/ASGI serving
+- **Reverse proxy**: Nginx or Caddy for HTTPS termination
+
+---
+
+## 👨‍💻 Development
+
+### Code quality
+- **Black** – formatting  
+- **isort** – import sorting  
+- **flake8** (+bugbear, +comprehensions) – linting  
+- **mypy** + django-stubs – typing  
+
+### Pre-commit
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+> Install the pre-commit hooks with pre-commit install to automatically format and lint code on every commit.
+
+### Tests
+```bash
+pytest -q
 ```
 
 ---
 
-## Notes & Guarantees
-- Thumbnails are generated as JPEG (quality 85) with max width 200px; original aspect ratio preserved; no upscaling.
-- Monetary fields use `Decimal` with non‑negative validation.
-- Public read access; writes are enforced by DRF permissions (seller group).
-- Orders are tied to `auth_user`; totals are recomputed on line changes.
+## 📂 Project Structure
+
+```
+.
+├── config/
+│   ├── __init__.py
+│   ├── asgi.py
+│   ├── celery.py
+│   ├── urls.py
+│   ├── views.py
+│   ├── wsgi.py
+│   └── settings/
+│       ├── __init__.py
+│       ├── base.py
+│       ├── dev.py
+│       ├── prod.py
+│       └── staging.py
+├── shop/
+│   ├── __init__.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── filters.py
+│   ├── management/
+│   │   └── commands/
+│   │       └── ensure_seller_group.py
+│   ├── migrations/
+│   ├── static/
+│   ├── tests/
+│   ├── models.py
+│   ├── permissions.py
+│   ├── serializers.py
+│   ├── signals.py
+│   ├── tasks.py
+│   ├── urls.py
+│   └── views.py
+├── media/ # created locally, not versioned
+├── .env.example
+├── .gitignore
+├── .pre-commit-config.yaml
+├── docker-compose.yaml
+├── LICENSE
+├── manage.py
+├── pyproject.toml
+├── requirements.in
+├── requirements-dev.in
+└── README.md
+```
+> `media/` — folder for user uploads (e.g. product images).  
+Must be created manually in development (`mkdir media`) but **should not be committed** (already in `.gitignore`).  
+In production, serve it via Nginx or an external storage service (S3/GCS).
 
 ---
-
-## License
-`MIT LICENSE`

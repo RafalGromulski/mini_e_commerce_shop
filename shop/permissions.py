@@ -1,10 +1,10 @@
 """Custom DRF permissions for the Shop API."""
 
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.request import Request
 
 
@@ -13,10 +13,10 @@ def is_seller(user: Any) -> bool:
     Treat a user as a 'seller' if they belong to the configured auth group.
     (No is_staff check here – group membership only.)
     """
-    if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
+    if not user or isinstance(user, AnonymousUser) or not getattr(user, "is_authenticated", False):
         return False
     group_name = getattr(settings, "SHOP_SELLER_GROUP", "seller")
-    return user.groups.filter(name=group_name).exists()
+    return cast(bool, user.groups.filter(name=group_name).exists())
 
 
 class IsSellerOrReadOnly(BasePermission):

@@ -12,13 +12,15 @@ from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
-from PIL import Image, UnidentifiedImageError
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
+from PIL import Image, UnidentifiedImageError
+from PIL.Image import Image as PILImage
 
 
 def product_image_upload(instance: "Product", filename: str) -> str:
@@ -75,9 +77,7 @@ class Product(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.00"))],
     )
-    image = models.ImageField(
-        "Image", upload_to=product_image_upload, blank=True, null=True
-    )
+    image = models.ImageField("Image", upload_to=product_image_upload, blank=True, null=True)
     thumbnail = models.ImageField(
         "Thumbnail", upload_to=product_image_upload, blank=True, null=True, editable=False
     )
@@ -99,7 +99,7 @@ class Product(models.Model):
     def __str__(self) -> str:
         return self.name
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         """
         Save the product and (re)generate a thumbnail when the main image changes.
 
@@ -137,23 +137,23 @@ class Product(models.Model):
         try:
             # Load source image
             self.image.open("rb")
-            img = Image.open(self.image)
-            img.load()
+            pil_img: PILImage = Image.open(self.image)
+            pil_img.load()
 
             # Normalize color mode (e.g., PNG with alpha) to RGB for JPEG
-            if img.mode not in ("RGB", "L"):
-                img = img.convert("RGB")
+            if pil_img.mode not in ("RGB", "L"):
+                pil_img = pil_img.convert("RGB")
 
             # Resize if wider than the target width
-            w, h = img.size
+            w, h = pil_img.size
             if w > self.THUMB_MAX_WIDTH:
                 new_w = self.THUMB_MAX_WIDTH
                 new_h = int(h * (new_w / w))
-                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
             # Save to memory as JPEG
             out = BytesIO()
-            img.save(out, format="JPEG", quality=self.THUMB_QUALITY)
+            pil_img.save(out, format="JPEG", quality=self.THUMB_QUALITY)
             out.seek(0)
 
             # Put thumbnail next to the original file
@@ -199,7 +199,7 @@ class Order(models.Model):
     def __str__(self) -> str:
         return f"Order #{self.pk} — {self.customer}"
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         """
         Ensure payment_due_date is set on first save: created_at (or today) + 5 days.
         """
@@ -208,7 +208,7 @@ class Order(models.Model):
             self.payment_due_date = base + timedelta(days=5)
         super().save(*args, **kwargs)
 
-    def recalculate_totals(self):
+    def recalculate_totals(self) -> None:
         """
         Recompute and persist the order's total price from its items.
         """
@@ -222,12 +222,8 @@ class Order(models.Model):
 class OrderItem(models.Model):
     """Single order line: product snapshot with its unit price at the moment of ordering."""
 
-    order = models.ForeignKey(
-        Order, on_delete=models.CASCADE, related_name="items"
-    )
-    product = models.ForeignKey(
-        Product, on_delete=models.PROTECT, related_name="order_items"
-    )
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="order_items")
     quantity = models.PositiveIntegerField("Quantity", default=1)
     unit_price = models.DecimalField(
         "Unit price",
@@ -250,7 +246,7 @@ class OrderItem(models.Model):
     def __str__(self) -> str:
         return f"{self.product} × {self.quantity}"
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         """
         Snapshot the product price into unit_price on creation if not provided.
         """

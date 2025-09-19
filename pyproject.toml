@@ -1,0 +1,47 @@
+[project]
+name = "mini-ecommerce-shop"
+version = "0.1.0"
+description = "Django + DRF e-commerce API"
+requires-python = ">=3.13"
+
+[tool.pip-tools]
+generate-hashes = false
+
+[tool.pip-tools.compile]
+quiet = true
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["config", "shop"]
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = [
+  "E203",  # spójne z Black
+  "W503"   # line break before binary operator
+]
+exclude = ["migrations", ".venv", "venv"]
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main"]
+disallow_untyped_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+ignore_missing_imports = true
+exclude = ["migrations"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.dev"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
