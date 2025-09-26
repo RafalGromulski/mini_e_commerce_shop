@@ -1,19 +1,22 @@
 -r requirements.in
 
-# Formatting
-black>=24.8,<25.0
-isort>=5.13,<6.0
+# Formatting / pre-commit
+black>=25.1,<26.0
+isort>=6.0,<7.0
+pre_commit>=4.3,<5.0
 
 # Linting
-flake8>=7.1,<8.0
-flake8-bugbear>=24.8,<25.0
-flake8-comprehensions>=3.14,<4.0
+flake8>=7.3,<8.0
+flake8-bugbear>=24.12,<25.0
+flake8-comprehensions>=3.17,<4.0
 
 # Typing
-mypy>=1.11,<2.0
-django-stubs>=5.0,<6.0
-djangorestframework-stubs>=3.15,<3.16
+mypy>=1.18,<2.0
+django-stubs>=5.2,<6.0
+django-stubs-ext>=5.2,<6.0
+celery-types>=0.23,<0.24
+types-PyYAML>=6.0.12.20250915,<7.0
 
 # Tests
-pytest>=8.3,<9.0
-pytest-django>=4.8,<5.0
+pytest>=8.4,<9.0
+pytest-django>=4.11,<5.0

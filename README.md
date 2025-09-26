@@ -1,4 +1,4 @@
-# 🛍️ Mini E-Commerce Shop API
+# 🛍️ Mini e-commerce shop API project
 
 ![Python](https://img.shields.io/badge/python-3.13-blue.svg)
 ![Django](https://img.shields.io/badge/django-5.1%2B-green.svg)
@@ -37,13 +37,65 @@ It supports a public product catalog (with filtering/sorting/pagination), seller
 
 ### 1. Clone & install
 ```bash
+# 1) Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
-pip install -U pip
-pip install pip-tools
-pip-compile requirements.in
-pip-compile requirements-dev.in
-pip install -r requirements-dev.txt
+# macOS/Linux:
+source .venv/bin/activate
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+
+# 2) Upgrade base tools
+python -m pip install --upgrade pip setuptools wheel
+
+# 3) Install pip-tools (provides pip-compile / pip-sync)
+python -m pip install "pip-tools>=7.5,<8.0"
+
+# 4) Generate lock files (choose what you need)
+
+# Option A: maintain both runtime and dev locks
+pip-compile --strip-extras requirements.in
+pip-compile --strip-extras requirements-dev.in
+
+# Option B: maintain only dev lock (includes runtime + dev tools)
+pip-compile --strip-extras requirements-dev.in
+
+# 5) Install dependencies
+
+# Development (runtime + dev tools)
+pip-sync requirements-dev.txt
+
+# Production (runtime only)
+pip-sync requirements.txt
+```
+
+> ⚡️ Note: pip-sync ensures your environment matches the lock file exactly (it also removes extra packages).
+If you only want to add packages without removing existing ones, you can use:
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+#### Which lock file to use?
+
+```
+          ┌──────────────────────────────┐
+          │   Do you need dev tools?     │
+          │ (linters, formatters, tests) │
+          └──────────────┬───────────────┘
+                         │
+             ┌───────────┴───────────┐
+             │                       │
+           YES                      NO
+             │                       │
+   ┌─────────▼─────────┐   ┌─────────▼─────────┐
+   │ Use requirements- │   │ Use requirements. │
+   │    dev.txt        │   │       txt         │
+   │ (dev + prod deps) │   │ (prod deps only)  │
+   └─────────┬─────────┘   └─────────┬─────────┘
+             │                       │
+       Developers / local        CI / Production
+       environments              deployments
+
 ```
 
 ### 2. Configure environment

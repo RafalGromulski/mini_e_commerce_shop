@@ -88,3 +88,6 @@ celerybeat.pid
 # ---- Misc ----
 # If you generate local settings modules
 *settings_local.py
+
+deploy/secrets/*
+!deploy/secrets/.gitkeep

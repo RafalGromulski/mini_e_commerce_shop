@@ -1,5 +1,5 @@
 """
-Domain models for the E-commerce API.
+Domain models for the Mini e-commerce shop API project.
 
 Includes:
 - Category: simple product category (unique name).

@@ -1,7 +1,7 @@
 [project]
-name = "mini-ecommerce-shop"
+name = "mini-ecommerce-shop-api-project"
 version = "0.1.0"
-description = "Django + DRF e-commerce API"
+description = "Django + DRF mini e-commerce shop API project"
 requires-python = ">=3.13"
 
 [tool.pip-tools]

@@ -1,5 +1,5 @@
 """
-Base Django settings for the E-commerce API project.
+Base Django settings for the Mini e-commerce shop API project.
 
 This module holds configuration shared by all environments (dev/staging/prod).
 Environment-specific overrides live in sibling modules: dev.py, staging.py, prod.py.
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, List
+from urllib.parse import quote_plus
 
 import environ
 from celery.schedules import crontab
@@ -25,6 +26,8 @@ from celery.schedules import crontab
 # ---------------------------------------------------------------------
 # => parents[2] points to <project_root>
 BASE_DIR = Path(__file__).resolve().parents[2]
+# Equivalent
+# BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------
 # Environment
@@ -40,10 +43,57 @@ for _env_path in env_file_candidates:
         environ.Env.read_env(_env_path)
         break
 
+
+# ---------------------------------------------------------------------
+# Secrets helpers / URL builders (Docker secrets friendly)
+# ---------------------------------------------------------------------
+def read_secret(path: str | None, default: str = "") -> str:
+    """Read a secret from a file (e.g. /run/secrets/...), fallback to default."""
+    if not path:
+        return default
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except Exception:
+        return default
+
+
+def build_postgres_dict_from_parts() -> dict:
+    """Build DATABASES['default'] dict from DB_* envs + DB_PASSWORD_FILE."""
+    name = env("DB_NAME", default="app")
+    user = env("DB_USER", default="app")
+    host = env("DB_HOST", default="db")
+    port = env("DB_PORT", default="5432")
+    pwd = read_secret(
+        env("DB_PASSWORD_FILE", default=None), default=env("POSTGRES_PASSWORD", default="")
+    )
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": name,
+        "USER": user,
+        "PASSWORD": pwd,
+        "HOST": host,
+        "PORT": port,
+        "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60),
+        "OPTIONS": {"connect_timeout": env.int("DB_CONNECT_TIMEOUT", default=5)},
+    }
+
+
+def build_redis_url(db_env_name: str, default_db: str) -> str:
+    """Compose redis:// URL from REDIS_* envs + REDIS_PASSWORD_FILE with fallback to no-auth."""
+    host = env("REDIS_HOST", default="redis")
+    port = env("REDIS_PORT", default="6379")
+    db = env(db_env_name, default=default_db)
+    pwd = read_secret(
+        env("REDIS_PASSWORD_FILE", default=None), default=env("REDIS_PASSWORD", default="")
+    )
+    if pwd:
+        return f"redis://:{quote_plus(pwd)}@{host}:{port}/{db}"
+    return f"redis://{host}:{port}/{db}"
+
+
 # --- Core / Security ----------------------------------------------------------
 DEBUG: bool = env.bool("DEBUG", default=True)
 SECRET_KEY: str = env("SECRET_KEY", default="dev-secret-key-change-me")
-# ALLOWED_HOSTS: List[str] = env.list("ALLOWED_HOSTS", default=["127.0.0.1", "localhost"])
 ALLOWED_HOSTS: List[str] = env.list("ALLOWED_HOSTS", default="*")
 CSRF_TRUSTED_ORIGINS: List[str] = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
@@ -108,7 +158,27 @@ ASGI_APPLICATION = "config.asgi.application"
 # ---------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------
-DATABASES = {"default": env.db(default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")}
+# Priority:
+# 1) DATABASE_URL (e.g. provided by .env in dev)
+# 2) DB_* + DB_PASSWORD_FILE (Docker secrets friendly)
+# 3) SQLite fallback
+if env("DATABASE_URL", default=None):
+    DATABASES = {"default": env.db("DATABASE_URL")}
+else:
+    if any(
+        env(e, default=None)
+        for e in [
+            "DB_NAME",
+            "DB_USER",
+            "DB_HOST",
+            "DB_PORT",
+            "DB_PASSWORD_FILE",
+            "POSTGRES_PASSWORD",
+        ]
+    ):
+        DATABASES = {"default": build_postgres_dict_from_parts()}
+    else:
+        DATABASES = {"default": env.db(default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")}
 
 # DATABASES = {
 #     "default": {
@@ -131,7 +201,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # ---------------------------------------------------------------------
 LANGUAGE_CODE = env("LANGUAGE_CODE", default="en")
-TIME_ZONE = env("TIME_ZONE", default="Europe/Warsaw")
+TIME_ZONE = env("TZ", default="Europe/Warsaw")
 USE_I18N = True
 USE_TZ = True
 
@@ -193,7 +263,7 @@ else:
 # OpenAPI (drf-spectacular)
 # ---------------------------------------------------------------------
 SPECTACULAR_SETTINGS = {
-    "TITLE": env("OPENAPI_TITLE", default="E-commerce API"),
+    "TITLE": env("OPENAPI_TITLE", default="Mini e-commerce shop API project"),
     "DESCRIPTION": "REST API for e-commerce domain.",
     "VERSION": env("OPENAPI_VERSION", default="0.1.0"),
     "SERVERS": [{"url": env("OPENAPI_SERVER_URL", default="http://localhost:8000")}],
@@ -208,20 +278,48 @@ SPECTACULAR_SETTINGS = {
     # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
 }
 
+# ---------------------------------------------------------------------
+# Celery
+# ---------------------------------------------------------------------
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=None) or build_redis_url(
+    "REDIS_DB_BROKER", default_db="0"
+)
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=None) or build_redis_url(
+    "REDIS_DB_BACKEND", default_db="0"
+)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_DEFAULT_QUEUE = env("CELERY_TASK_DEFAULT_QUEUE", default="default")
 CELERY_BEAT_SCHEDULE = {
     # Daily payment reminder for orders due tomorrow.
     "payment-reminders-daily": {
         "task": "shop.tasks.send_payment_reminders",
-        "schedule": crontab(hour=9, minute=0),
+        "schedule": crontab(hour=9, minute=0, day_of_week="mon-fri"),
         "options": {"queue": CELERY_TASK_DEFAULT_QUEUE},
+        # test in dev
+        # "schedule": timedelta(minutes=1),
     },
 }
 
-# --- Cache --------------------------------------------------------------------
-CACHES = {
-    "default": env.cache("CACHE_URL", default="locmemcache://"),
-}
+# ---------------------------------------------------------------------
+# Cache
+# ---------------------------------------------------------------------
+if env("CACHE_URL", default=None):
+    CACHES = {"default": env.cache("CACHE_URL")}
+elif env.bool("USE_REDIS_CACHE", default=False):
+    redis_cache_url = build_redis_url("REDIS_DB_CACHE", default_db="1")
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": redis_cache_url,
+            "TIMEOUT": env.int("CACHE_TIMEOUT", default=300),
+            "KEY_PREFIX": env("CACHE_KEY_PREFIX", default="app"),
+        }
+    }
+else:
+    CACHES = {"default": env.cache("CACHE_URL", default="locmemcache://")}
 
 # --- Logging ------------------------------------------------------------------
 # Simple console logs by default; tune levels/handlers for production as needed.
