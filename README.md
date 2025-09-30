@@ -1,6 +1,6 @@
-# 🛍️ Mini e-commerce shop API project
+# 🛍️ Mini e-commerce shop API - Django + Celery + Docker
 
-![Python](https://img.shields.io/badge/python-3.13-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12-blue.svg)
 ![Django](https://img.shields.io/badge/django-5.1%2B-green.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -22,7 +22,7 @@ It supports a public product catalog (with filtering/sorting/pagination), seller
 
 ## 🛠️ Tech Stack
 
-- Python **3.13**
+- Python **3.12**
 - Django **5.1+**
 - Django REST Framework **3.15+**
 - django-filter, drf-spectacular

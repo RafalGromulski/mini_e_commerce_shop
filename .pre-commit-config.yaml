@@ -3,13 +3,13 @@ repos:
     rev: 24.8.0
     hooks:
       - id: black
-        language_version: python3.13
+        language_version: python3.12
 
   - repo: https://github.com/PyCQA/isort
     rev: 6.0.1
     hooks:
       - id: isort
-        language_version: python3.13
+        language_version: python3.12
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.1.1
@@ -18,7 +18,7 @@ repos:
         args:
           - --max-line-length=100
           - --extend-ignore=E203,W503
-        language_version: python3.13
+        language_version: python3.12
         additional_dependencies:
           - flake8-bugbear>=24.8,<25.0
           - flake8-comprehensions>=3.14,<4.0
@@ -32,7 +32,7 @@ repos:
           - --show-traceback
           - --show-error-codes
           - --pretty
-        language_version: python3.13
+        language_version: python3.12
         additional_dependencies:
           - django>=5.0,<6.0
           - djangorestframework>=3.15,<3.16
@@ -44,3 +44,4 @@ repos:
           - celery>=5.5,<5.6
           - redis>=6.0,<7.0
           - pillow>=10.4,<11.0
+          - psycopg[binary]>=3.2,<3.3

@@ -5,6 +5,7 @@ django-environ>=0.12,<0.13
 django-filter>=25.1,<26.0
 drf-spectacular>=0.28,<0.29
 pillow>=11.3,<12.0
+psycopg[binary]>=3.2,<3.3
 
 # Celery + Redis
 celery>=5.5,<5.6

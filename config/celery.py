@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
-
 from celery import Celery
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+from config.env import configure_django_settings
+
+configure_django_settings()
 
 app: Celery = Celery("config")
 

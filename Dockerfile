@@ -3,7 +3,8 @@ FROM python:3.12-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libpq-dev \
+    libpq-dev  \
+    wget \
   && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/opt/venv
@@ -16,7 +17,9 @@ WORKDIR /app
 
 # Jeśli masz pyproject/poetry, odkomentuj odpowiednie linie.
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+
+RUN python -m pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
 
 # Skopiuj projekt
 COPY . /app
@@ -34,10 +37,12 @@ FROM python:3.12-slim AS runtime
 RUN addgroup --system app && adduser --system --ingroup app --home /app app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
+    libpq5  \
+    wget \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV=/opt/venv \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -45,6 +50,8 @@ WORKDIR /app
 
 # venv z buildera
 COPY --from=builder /opt/venv /opt/venv
+
+RUN chown -R app:app /opt/venv
 
 # Kod aplikacji
 COPY --chown=app:app . /app

@@ -11,11 +11,11 @@ from .views import HealthCheckView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/", include(("shop.urls", "shop"), namespace="shop")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     path("api/health/", HealthCheckView.as_view(), name="health-check"),
-    path("api/", include("shop.urls")),
     path("favicon.ico", RedirectView.as_view(url=settings.STATIC_URL + "favicon.ico")),
 ]
 

@@ -1,6 +1,37 @@
-name: myapp  # optional but recommended for clarity in logs and container names
+# =============================================================================
+# docker-compose.yml — e_commerce_shop
+#
+# Purpose:
+# - Consistent, secure, well-documented orchestration for Django + Celery.
+# - Profiles: "prod" (production) and "dev" (local development).
+# - Works with Docker Compose v2 and Swarm (uses deploy.*).
+#
+# Key practices:
+# - Secrets via Docker secrets (file-based in Compose; external in Swarm).
+# - Read-only rootfs + tmpfs wherever possible.
+# - Healthchecks + depends_on:condition for clean startup ordering.
+# - Resource limits (deploy.resources) + --compatibility for Compose.
+# - The Least privilege (cap_drop ALL, no-new-privileges).
+# - x-* anchors to keep things DRY.
+#
+# Quick usage:
+# - DEV:  docker compose --profile dev up --build --compatibility
+# - PROD: docker compose --profile prod up -d --build --compatibility
+# - Swarm:
+#     docker swarm init
+#     docker stack deploy -c docker-compose.yml myapp
+#
+# One-off tasks:
+#   docker compose run --rm migrate
+#   docker compose run --rm collectstatic
+# =============================================================================
 
-# ====== Anchors (DRY) ======
+name: e_commerce_shop  # optional but recommended for clarity in logs and container names
+
+# ==============================
+# Anchors (DRY)
+# ==============================
+
 x-env-common: &env_common
   DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.prod}
   TZ: ${TZ:-Europe/Warsaw}
@@ -13,19 +44,20 @@ x-logging: &logging_json
     max-file: "3"
 
 x-health-gunicorn: &health_gunicorn
-  # Application-level healthcheck (expects /api/health/ to return 2xx)
-  test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/api/health/ || exit 1"]
+  # App-level healthcheck (expects 2xx from /api/health/)
+  test: ["CMD-SHELL", "wget --header='X-Forwarded-Proto: https' -qO- http://127.0.0.1:8000/api/health/ || exit 1"]
   interval: 10s
   timeout: 5s
   retries: 8
-  start_period: 25s
+  start_period: 45s
 
 x-service-common: &service_common
-  # Common runtime settings shared across services
+  # Common runtime settings for most services
   networks: [backend]
   restart: unless-stopped
   logging: *logging_json
-  init: true                 # PID 1 reaper to avoid zombie processes
+  init: true                    # PID 1 reaper to avoid zombies
+  stop_grace_period: 30s        # gentler shutdown
   ulimits:
     nofile:
       soft: 4096
@@ -38,36 +70,45 @@ x-django-common: &django_common
     target: runtime
   environment:
     <<: *env_common
-    # --- Database pieces (assembled in Django from secrets) ---
+    # --- Database (assembled in Django using *_FILE) ---
     DB_NAME: ${POSTGRES_DB:-app}
     DB_USER: ${POSTGRES_USER:-app}
     DB_HOST: db
     DB_PORT: "5432"
     DB_PASSWORD_FILE: /run/secrets/db_password
-    # --- Redis (broker/result backend) — composed in code based on *_FILE ---
+    # --- Redis (broker/backend; passwords via *_FILE) ---
     REDIS_HOST: redis
     REDIS_PORT: "6379"
     REDIS_DB_BROKER: "0"
     REDIS_DB_BACKEND: "0"
     REDIS_PASSWORD_FILE: /run/secrets/redis_password
-  env_file: [.env]
+  env_file:
+    - ${ENV_FILE:-.env}
   depends_on:
     db:
       condition: service_healthy
     redis:
       condition: service_healthy
   read_only: true
-  tmpfs: ["/tmp"]          # tmp directory for Gunicorn and temp files
-  user: "${APP_UID:-1000}:${APP_GID:-1000}"  # avoid running as root
+  tmpfs: ["/tmp"]
+  user: "app"
+#  user: "${APP_UID:-1000}:${APP_GID:-1000}"   # alternative via UID/GID
   security_opt:
     - no-new-privileges:true
   cap_drop: [ALL]
 
+# ============
+# Services
+# ============
+
 services:
-    # ===== Database (Postgres) =====
+
+  # ---------------------------------------------------------------------------
+  # Postgres 16 — persistent data in a volume
+  # ---------------------------------------------------------------------------
   db:
     image: postgres:16-alpine
-    command: ["postgres"]   # explicit for clarity (uses PGDATA below)
+    command: ["postgres"]   # explicit; uses PGDATA below
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -93,15 +134,18 @@ services:
     secrets: [db_password]
     profiles: ["prod", "dev"]
 
-  # ===== Django + Gunicorn (production) =====
+  # ---------------------------------------------------------------------------
+  # Django + Gunicorn (PROD) — behind Nginx; internal expose only
+  # ---------------------------------------------------------------------------
   web:
     <<: [*django_common, *service_common]
     command: >
-      gunicorn config.wsgi:application
+      /opt/venv/bin/gunicorn config.wsgi:application
       --bind 0.0.0.0:8000
       --workers ${GUNICORN_WORKERS:-3}
       --threads ${GUNICORN_THREADS:-2}
       --timeout ${GUNICORN_TIMEOUT:-30}
+      --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30}
       --access-logfile -
       --error-logfile -
     expose:
@@ -115,7 +159,6 @@ services:
         source: static_data
         target: /app/staticfiles
         volume: { nocopy: true }
-    # depends_on inherited from x-django-common
     healthcheck: *health_gunicorn
     deploy:
       resources:
@@ -127,15 +170,18 @@ services:
     secrets: [db_password, redis_password]
     profiles: ["prod"]
 
-  # ===== Django + Gunicorn (development) =====
+  # ---------------------------------------------------------------------------
+  # Django + Gunicorn (DEV) — bind-mounted code, longer timeouts
+  # ---------------------------------------------------------------------------
   web-dev:
     <<: [*django_common, *service_common]
     command: >
-      gunicorn config.wsgi:application
+      /opt/venv/bin/gunicorn config.wsgi:application
       --bind 0.0.0.0:8000
       --workers 2
       --threads 2
       --timeout 60
+      --graceful-timeout 60
       --access-logfile -
       --error-logfile -
     expose:
@@ -154,22 +200,24 @@ services:
     environment:
       <<: *env_common
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.dev}
-      # In DEV, you can keep using DATABASE_URL instead of secrets
+      # DEV: you can keep using DATABASE_URL instead of secrets
       DATABASE_URL: ${DATABASE_URL:-postgres://$${POSTGRES_USER:-app}:$${POSTGRES_PASSWORD:-app}@db:5432/$${POSTGRES_DB:-app}}
-    # depends_on & env_file inherited from x-django-common
+    env_file: [.env.dev]
     healthcheck: *health_gunicorn
-    read_only: false        # convenient for local dev (live reload, etc.)
+    read_only: false         # dev convenience (live reload, etc.)
     profiles: ["dev"]
 
-  # ===== Nginx (reverse proxy / static) =====
+  # ---------------------------------------------------------------------------
+  # Nginx — reverse proxy / serves static & media files
+  # ---------------------------------------------------------------------------
   nginx:
     image: nginx:1.27-alpine
-    command: ["nginx", "-g", "daemon off;"]
+    command: ["sh","-lc","exec nginx -g 'daemon off;'"]
     ports:
       - "80:80"
       # - "443:443"   # enable if you terminate TLS here
     volumes:
-      - ./deploy/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - static_data:/app/staticfiles:ro
       - media_data:/app/media:ro
     depends_on:
@@ -188,25 +236,34 @@ services:
           cpus: "0.5"
         reservations:
           memory: 128m
-    user: "101:101"  # nginx user/group in the image; do not run as root
+    user: "101:101"           # nginx user/group from the image; not root
     read_only: true
-    tmpfs: ["/var/cache/nginx","/var/run","/tmp"]
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     cap_drop: [ALL]
+    cap_add: ["NET_BIND_SERVICE"]
     <<: *service_common
     profiles: ["prod", "dev"]
 
-
-  # ===== Redis (production — no host port exposed) =====
+  # ---------------------------------------------------------------------------
+  # Redis (PROD) — password from secret; no host port exposure
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    # Secure Redis with password loaded from a Docker secret
-    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$(cat /run/secrets/redis_password)\""]
+    command:
+      - sh
+      - -c
+      - |
+        PASS="$(tr -d '\r\n' < /run/secrets/redis_password)"
+        exec redis-server --appendonly yes --requirepass "$$PASS"
     volumes:
       - redis_data:/data
     environment:
       TZ: ${TZ:-Europe/Warsaw}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$(tr -d '\\r\\n' </run/secrets/redis_password)\" ping"]
       interval: 10s
       timeout: 5s
       retries: 8
@@ -222,12 +279,14 @@ services:
     secrets: [redis_password]
     profiles: ["prod"]
 
-  # ===== Redis (development — exposes 6379 on host) =====
+  # ---------------------------------------------------------------------------
+  # Redis (DEV) — convenient host port 6379
+  # ---------------------------------------------------------------------------
   redis-dev:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"   # dev convenience; avoid exposing in production
+      - "6379:6379"   # dev convenience; do not expose in prod
     volumes:
       - redis_data:/data
     environment:
@@ -248,11 +307,17 @@ services:
     <<: *service_common
     profiles: ["dev"]
 
-  # ===== Celery worker =====
+  # ---------------------------------------------------------------------------
+  # Celery worker — background task processing
+  # ---------------------------------------------------------------------------
   worker:
     <<: [*django_common, *service_common]
-    command: celery -A config worker -l ${CELERY_LOGLEVEL:-info} --concurrency=${CELERY_CONCURRENCY:-4}
-    # inherits env (DB_*, REDIS_*, *_FILE) and env_file from x-django-common
+    command: >
+      /opt/venv/bin/celery -A config worker
+      -l ${CELERY_LOGLEVEL:-info}
+      --concurrency=${CELERY_CONCURRENCY:-4}
+      --hostname=${CELERY_WORKER_NAME:-worker@%h}
+      --prefetch-multiplier=${CELERY_PREFETCH:-4}
     volumes:
       - media_data:/app/media
     depends_on:
@@ -263,7 +328,8 @@ services:
       web:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "python - <<'PY'\nimport sys; sys.exit(0)\nPY"]
+      # Simple no-op; replace with "celery -A config inspect ping" if desired
+      test: ["CMD-SHELL", "/opt/venv/bin/python - <<'PY'\nimport sys; sys.exit(0)\nPY"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -280,11 +346,16 @@ services:
     secrets: [db_password, redis_password]
     profiles: ["prod", "dev"]
 
-  # ===== Celery beat (scheduler) =====
+  # ---------------------------------------------------------------------------
+  # Celery beat — task scheduler
+  # ---------------------------------------------------------------------------
   beat:
     <<: [*django_common, *service_common]
-    command: celery -A config beat -l ${CELERY_LOGLEVEL:-info}
-    # inherits env (DB_*, REDIS_*, *_FILE) and env_file from x-django-common
+    command: >
+      /opt/venv/bin/celery -A config beat
+      -l ${CELERY_LOGLEVEL:-info}
+      --schedule /tmp/celerybeat-schedule
+      --pidfile /tmp/celerybeat.pid
     volumes:
       - media_data:/app/media
     depends_on:
@@ -295,7 +366,7 @@ services:
       web:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "python - <<'PY'\nimport sys; sys.exit(0)\nPY"]
+      test: ["CMD-SHELL", "/opt/venv/bin/python - <<'PY'\nimport sys; sys.exit(0)\nPY"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -312,10 +383,12 @@ services:
     secrets: [db_password, redis_password]
     profiles: ["prod", "dev"]
 
-  # ===== One-off jobs =====
+  # ---------------------------------------------------------------------------
+  # One-off: migrate — run DB migrations
+  # ---------------------------------------------------------------------------
   migrate:
     <<: [*django_common, *service_common]
-    command: python manage.py migrate --noinput
+    command: /opt/venv/bin/python manage.py migrate --noinput
     depends_on:
       db:
         condition: service_healthy
@@ -323,54 +396,75 @@ services:
     secrets: [db_password]
     profiles: [ "prod", "dev" ]
 
+  # ---------------------------------------------------------------------------
+  # One-off: collectstatic — gathers static files (needs CHOWN)
+  # ---------------------------------------------------------------------------
   collectstatic:
     <<: [*django_common, *service_common]
-    command: python manage.py collectstatic --noinput
+    command: >
+      sh -lc '
+        mkdir -p /app/staticfiles &&
+        chown -R app:app /app/staticfiles &&
+        exec /opt/venv/bin/python manage.py collectstatic --noinput
+      '
     volumes:
       - static_data:/app/staticfiles
+    environment:
+      - DJANGO_SKIP_CELERY_IMPORT=1
     depends_on:
       web:
         condition: service_started
+    read_only: false
+    user: "0:0"
     restart: "no"
+    security_opt: []
+    cap_drop: []
+    cap_add: ["CHOWN"]
     secrets: [db_password]
     profiles: ["prod", "dev"]
 
-# ===== Volumes =====
+  # Optional: init-media — initialize media directory ownership
+  # init-media:
+  #   <<: [*django_common, *service_common]
+  #   command: >
+  #     sh -lc '
+  #       mkdir -p /app/media &&
+  #       chown -R app:app /app/media
+  #     '
+  #   volumes:
+  #     - media_data:/app/media
+  #   read_only: false
+  #   user: "0:0"
+  #   restart: "no"
+  #   security_opt: []
+  #   cap_drop: []
+  #   cap_add: ["CHOWN"]
+  #   profiles: ["prod", "dev"]
+
+
+# ============
+# Volumes
+# ============
 volumes:
   redis_data:
   postgres_data:
   media_data:
   static_data:
 
-# ===== Networks =====
+# ============
+# Networks
+# ============
 networks:
   backend:
     driver: bridge
 
-# ===== Secrets =====
-# In Compose (non-Swarm) these files must exist on the host; in Swarm use `external: true` and create them via `docker secret create`.
+# ============
+# Secrets
+# ============
+# Compose (non-Swarm): these files must exist locally.
+# Swarm: set "external: true" and create via `docker secret create`.
 secrets:
   db_password:
     file: ./deploy/secrets/db_password.txt
   redis_password:
     file: ./deploy/secrets/redis_password.txt
-
-# ===== Usage =====
-# DEV (Compose):
-#   docker compose --profile dev up --build --compatibility
-#
-# PROD (Compose — maps deploy.resources via compatibility mode):
-#   docker compose --profile prod up -d --build --compatibility
-#
-# PROD (Swarm — full deploy.resources support):
-#   docker swarm init
-#   docker stack deploy -c docker-compose.yaml myapp
-#   # update:
-#   docker stack deploy -c docker-compose.yaml myapp
-#   # inspect:
-#   docker stack ps myapp
-#   docker service ls
-#
-# One-off jobs (Compose):
-#   docker compose run --rm migrate
-#   docker compose run --rm collectstatic

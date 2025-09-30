@@ -34,10 +34,6 @@ class ProductAdmin(admin.ModelAdmin):
         qs = super().get_queryset(request)
         return qs.select_related("category")
 
-    # @staticmethod
-    # def _render_thumb(url: str, height: int) -> str:
-    #     return format_html('<img src="{}" alt="thumb" height="{}">', url, height)
-
     @admin.display(description="Thumbnail")
     def thumb_preview(self, obj: Product) -> str:
         """Small thumbnail in list view."""

@@ -1,21 +1,19 @@
 """
-Base Django settings for the Mini e-commerce shop API project.
+Base Django settings for the Mini e-commerce Shop API.
 
-This module holds configuration shared by all environments (dev/staging/prod).
-Environment-specific overrides live in sibling modules: dev.py, staging.py, prod.py.
+This module defines configuration shared across all environments
+(dev / staging / production). Environment-specific overrides live in:
+`dev.py`, `staging.py`, and `prod.py`.
 
-Key points:
-- Environment-driven config using django-environ (.env for dev).
-- SQLite by default; switch to Postgres/MySQL with DATABASE_URL.
-- DRF + django-filter + drf-spectacular for REST API and OpenAPI schema.
-- Celery/Redis & a sample daily beat task, all env-driven.
-- Production security toggles auto-enable when DEBUG=False (see bottom section).
+Notes:
+- Environment variables are loaded via `django-environ`.
+- Where applicable, helpers are Docker-secrets friendly (e.g., *_FILE vars).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 from urllib.parse import quote_plus
 
 import environ
@@ -48,17 +46,37 @@ for _env_path in env_file_candidates:
 # Secrets helpers / URL builders (Docker secrets friendly)
 # ---------------------------------------------------------------------
 def read_secret(path: str | None, default: str = "") -> str:
-    """Read a secret from a file (e.g. /run/secrets/...), fallback to default."""
+    """
+    Read a secret from a file (e.g., `/run/secrets/...`); fall back to `default`.
+
+    Args:
+        path: Path to the secret file or None.
+        default: Value to return when `path` is missing or unreadable.
+
+    Returns:
+        The stripped file contents on success, otherwise `default`.
+    """
     if not path:
         return default
     try:
         return Path(path).read_text(encoding="utf-8").strip()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return default
 
 
-def build_postgres_dict_from_parts() -> dict:
-    """Build DATABASES['default'] dict from DB_* envs + DB_PASSWORD_FILE."""
+def build_postgres_dict_from_parts() -> dict[str, Any]:
+    """
+    Build `DATABASES['default']` using discrete DB_* envs + optional `DB_PASSWORD_FILE`.
+
+    Honors:
+        - DB_NAME, DB_USER, DB_HOST, DB_PORT
+        - DB_CONN_MAX_AGE, DB_CONNECT_TIMEOUT
+        - DB_SSL_REQUIRED, DB_SSLMODE
+        - DB_PASSWORD_FILE (preferred) or POSTGRES_PASSWORD
+
+    Returns:
+        A Django DATABASES configuration dictionary for PostgreSQL.
+    """
     name = env("DB_NAME", default="app")
     user = env("DB_USER", default="app")
     host = env("DB_HOST", default="db")
@@ -66,7 +84,7 @@ def build_postgres_dict_from_parts() -> dict:
     pwd = read_secret(
         env("DB_PASSWORD_FILE", default=None), default=env("POSTGRES_PASSWORD", default="")
     )
-    return {
+    cfg: dict[str, Any] = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": name,
         "USER": user,
@@ -77,9 +95,23 @@ def build_postgres_dict_from_parts() -> dict:
         "OPTIONS": {"connect_timeout": env.int("DB_CONNECT_TIMEOUT", default=5)},
     }
 
+    if env.bool("DB_SSL_REQUIRED", default=False):
+        cfg.setdefault("OPTIONS", {}).update({"sslmode": env("DB_SSLMODE", default="require")})
+    return cfg
+
 
 def build_redis_url(db_env_name: str, default_db: str) -> str:
-    """Compose redis:// URL from REDIS_* envs + REDIS_PASSWORD_FILE with fallback to no-auth."""
+    """
+    Compose a `redis://` URL from REDIS_* envs plus `REDIS_PASSWORD[_FILE]`.
+
+    Args:
+        db_env_name: Name of the env var carrying the logical Redis DB index
+                     (e.g., "REDIS_DB_BROKER").
+        default_db: Fallback DB index string to use when `db_env_name` is unset.
+
+    Returns:
+        A `redis://` or `redis://:password@host:port/db` connection URL.
+    """
     host = env("REDIS_HOST", default="redis")
     port = env("REDIS_PORT", default="6379")
     db = env(db_env_name, default=default_db)
@@ -94,8 +126,13 @@ def build_redis_url(db_env_name: str, default_db: str) -> str:
 # --- Core / Security ----------------------------------------------------------
 DEBUG: bool = env.bool("DEBUG", default=True)
 SECRET_KEY: str = env("SECRET_KEY", default="dev-secret-key-change-me")
-ALLOWED_HOSTS: List[str] = env.list("ALLOWED_HOSTS", default="*")
-CSRF_TRUSTED_ORIGINS: List[str] = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# IMPORTANT: use list defaults, not strings
+ALLOWED_HOSTS: list[str] = env.list("ALLOWED_HOSTS", default=["*"])
+CSRF_TRUSTED_ORIGINS: list[str] = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+if not DEBUG and ALLOWED_HOSTS == ["*"]:
+    raise RuntimeError("Set ALLOWED_HOSTS explicitly for non-debug runs.")
 
 # ---------------------------------------------------------------------
 # Applications
@@ -159,8 +196,8 @@ ASGI_APPLICATION = "config.asgi.application"
 # Database
 # ---------------------------------------------------------------------
 # Priority:
-# 1) DATABASE_URL (e.g. provided by .env in dev)
-# 2) DB_* + DB_PASSWORD_FILE (Docker secrets friendly)
+# 1) DATABASE_URL (convenient in dev)
+# 2) DB_* + DB_PASSWORD_FILE (Docker secrets)
 # 3) SQLite fallback
 if env("DATABASE_URL", default=None):
     DATABASES = {"default": env.db("DATABASE_URL")}
@@ -179,13 +216,6 @@ else:
         DATABASES = {"default": build_postgres_dict_from_parts()}
     else:
         DATABASES = {"default": env.db(default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")}
-
-# DATABASES = {
-#     "default": {
-#         "ENGINE": "django.db.backends.sqlite3",
-#         "NAME": BASE_DIR / "db.sqlite3",
-#     }
-# }
 
 # ---------------------------------------------------------------------
 # Password validation
@@ -209,9 +239,9 @@ USE_TZ = True
 # Static & media
 # ---------------------------------------------------------------------
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(env("STATIC_ROOT", default=BASE_DIR / "staticfiles"))
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(env("MEDIA_ROOT", default=BASE_DIR / "media"))
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -293,12 +323,12 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_DEFAULT_QUEUE = env("CELERY_TASK_DEFAULT_QUEUE", default="default")
 CELERY_BEAT_SCHEDULE = {
-    # Daily payment reminder for orders due tomorrow.
+    # Weekdays at 09:00 — payment reminder for orders due the next day.
     "payment-reminders-daily": {
         "task": "shop.tasks.send_payment_reminders",
         "schedule": crontab(hour=9, minute=0, day_of_week="mon-fri"),
         "options": {"queue": CELERY_TASK_DEFAULT_QUEUE},
-        # test in dev
+        # For local testing:
         # "schedule": timedelta(minutes=1),
     },
 }
@@ -307,7 +337,7 @@ CELERY_BEAT_SCHEDULE = {
 # Cache
 # ---------------------------------------------------------------------
 if env("CACHE_URL", default=None):
-    CACHES = {"default": env.cache("CACHE_URL")}
+    CACHES: dict[str, Any] = {"default": env.cache("CACHE_URL")}
 elif env.bool("USE_REDIS_CACHE", default=False):
     redis_cache_url = build_redis_url("REDIS_DB_CACHE", default_db="1")
     CACHES = {
@@ -336,7 +366,7 @@ LOGGING: dict[str, Any] = {
 }
 
 # --- Production security toggles ---------------------------------------------
-# Auto-harden when DEBUG=False. You can still override via env in prod.py.
+# Auto-harden when DEBUG=False. You can still override via env in `prod.py`.
 if not DEBUG:
     # Require proper secret in non-debug runs
     if not SECRET_KEY or SECRET_KEY == "dev-secret-key-change-me":

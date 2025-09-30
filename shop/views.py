@@ -1,11 +1,18 @@
 """API views (DRF) for categories, products, orders, and sales statistics."""
 
-from typing import Any, Type, cast
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Type, cast
 
 from django.db.models import Sum
 from django.db.models.functions import TruncDate
 from django_filters import FilterSet
-from django_stubs_ext import QuerySetAny as DJQuerySet
+
+if TYPE_CHECKING:
+    from django_stubs_ext import QuerySetAny as DJQuerySet
+else:
+    DJQuerySet = Any
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, parsers, viewsets

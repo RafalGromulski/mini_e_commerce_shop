@@ -5,6 +5,9 @@
   decorators bind to this application.
 """
 
-from .celery import app as celery_app
+import os
+
+if os.getenv("DJANGO_SKIP_CELERY_IMPORT") != "1":
+    from .celery import app as celery_app
 
 __all__ = ("celery_app",)
