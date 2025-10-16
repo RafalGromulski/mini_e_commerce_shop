@@ -2,7 +2,7 @@
 name = "mini-ecommerce-shop-api-project"
 version = "0.1.0"
 description = "Django + DRF mini e-commerce shop API project"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 
 [tool.pip-tools]
 generate-hashes = false
@@ -12,7 +12,7 @@ quiet = true
 
 [tool.black]
 line-length = 100
-target-version = ["py313"]
+target-version = ["py312"]
 skip-string-normalization = true
 
 [tool.isort]
@@ -29,7 +29,7 @@ extend-ignore = [
 exclude = ["migrations", ".venv", "venv"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 plugins = ["mypy_django_plugin.main"]
 disallow_untyped_defs = true
 check_untyped_defs = true

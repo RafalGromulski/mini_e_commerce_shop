@@ -85,7 +85,7 @@ python -m pip install -r requirements-dev.txt
                          │
              ┌───────────┴───────────┐
              │                       │
-           YES                      NO
+            YES                      NO
              │                       │
    ┌─────────▼─────────┐   ┌─────────▼─────────┐
    │ Use requirements- │   │ Use requirements. │
@@ -93,8 +93,8 @@ python -m pip install -r requirements-dev.txt
    │ (dev + prod deps) │   │ (prod deps only)  │
    └─────────┬─────────┘   └─────────┬─────────┘
              │                       │
-       Developers / local        CI / Production
-       environments              deployments
+      Developers / local       CI / Production
+      environments             deployments
 
 ```
 

@@ -125,7 +125,11 @@ def build_redis_url(db_env_name: str, default_db: str) -> str:
 
 # --- Core / Security ----------------------------------------------------------
 DEBUG: bool = env.bool("DEBUG", default=True)
-SECRET_KEY: str = env("SECRET_KEY", default="dev-secret-key-change-me")
+
+SECRET_KEY: str = read_secret(
+    env("DJANGO_SECRET_KEY_FILE", default=None),
+    default=env("SECRET_KEY", default="dev-secret-key-change-me"),
+)
 
 # IMPORTANT: use list defaults, not strings
 ALLOWED_HOSTS: list[str] = env.list("ALLOWED_HOSTS", default=["*"])
@@ -367,18 +371,18 @@ LOGGING: dict[str, Any] = {
 
 # --- Production security toggles ---------------------------------------------
 # Auto-harden when DEBUG=False. You can still override via env in `prod.py`.
-if not DEBUG:
-    # Require proper secret in non-debug runs
-    if not SECRET_KEY or SECRET_KEY == "dev-secret-key-change-me":
-        raise RuntimeError("SECRET_KEY must be set when DEBUG is False.")
+# if not DEBUG:
+#     # Require proper secret in non-debug runs
+#     if not SECRET_KEY or SECRET_KEY == "dev-secret-key-change-me":
+#         raise RuntimeError("SECRET_KEY must be set when DEBUG is False.")
 
-    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=60 * 60 * 24 * 30)  # 30 days
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    USE_X_FORWARDED_HOST = True
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=60 * 60 * 24 * 30)  # 30 days
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True

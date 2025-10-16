@@ -63,25 +63,31 @@ x-service-common: &service_common
       soft: 4096
       hard: 8192
 
+x-django-env: &django_env
+  DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.prod}
+  TZ: ${TZ:-Europe/Warsaw}
+  PYTHONUNBUFFERED: "1"
+  # --- Django Secret Key, password via *_FILE ---
+  DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+  # --- Database (assembled in Django using *_FILE) ---
+  DB_NAME: ${POSTGRES_DB:-app}
+  DB_USER: ${POSTGRES_USER:-app}
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_PASSWORD_FILE: /run/secrets/db_password
+  # --- Redis (broker/backend; passwords via *_FILE) ---
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_DB_BROKER: "0"
+  REDIS_DB_BACKEND: "0"
+  REDIS_PASSWORD_FILE: /run/secrets/redis_password
+
 x-django-common: &django_common
-  # Shared settings for Django-based services
   build:
     context: .
     target: runtime
   environment:
-    <<: *env_common
-    # --- Database (assembled in Django using *_FILE) ---
-    DB_NAME: ${POSTGRES_DB:-app}
-    DB_USER: ${POSTGRES_USER:-app}
-    DB_HOST: db
-    DB_PORT: "5432"
-    DB_PASSWORD_FILE: /run/secrets/db_password
-    # --- Redis (broker/backend; passwords via *_FILE) ---
-    REDIS_HOST: redis
-    REDIS_PORT: "6379"
-    REDIS_DB_BROKER: "0"
-    REDIS_DB_BACKEND: "0"
-    REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    <<: *django_env
   env_file:
     - ${ENV_FILE:-.env}
   depends_on:
@@ -167,7 +173,7 @@ services:
           cpus: "0.75"
         reservations:
           memory: 512m
-    secrets: [db_password, redis_password]
+    secrets: [db_password, django_secret_key, redis_password]
     profiles: ["prod"]
 
   # ---------------------------------------------------------------------------
@@ -343,7 +349,7 @@ services:
           memory: 512m
     read_only: true
     tmpfs: ["/tmp"]
-    secrets: [db_password, redis_password]
+    secrets: [db_password, django_secret_key, redis_password]
     profiles: ["prod", "dev"]
 
   # ---------------------------------------------------------------------------
@@ -380,7 +386,7 @@ services:
           memory: 256m
     read_only: true
     tmpfs: ["/tmp"]
-    secrets: [db_password, redis_password]
+    secrets: [db_password, django_secret_key , redis_password]
     profiles: ["prod", "dev"]
 
   # ---------------------------------------------------------------------------
@@ -393,7 +399,7 @@ services:
       db:
         condition: service_healthy
     restart: "no"
-    secrets: [db_password]
+    secrets: [db_password, django_secret_key]
     profiles: [ "prod", "dev" ]
 
   # ---------------------------------------------------------------------------
@@ -410,7 +416,8 @@ services:
     volumes:
       - static_data:/app/staticfiles
     environment:
-      - DJANGO_SKIP_CELERY_IMPORT=1
+      <<: *django_env
+      DJANGO_SKIP_CELERY_IMPORT: "1"
     depends_on:
       web:
         condition: service_started
@@ -420,7 +427,7 @@ services:
     security_opt: []
     cap_drop: []
     cap_add: ["CHOWN"]
-    secrets: [db_password]
+    secrets: [db_password, django_secret_key]
     profiles: ["prod", "dev"]
 
   # Optional: init-media — initialize media directory ownership
@@ -466,5 +473,7 @@ networks:
 secrets:
   db_password:
     file: ./deploy/secrets/db_password.txt
+  django_secret_key:
+    file: ./deploy/secrets/django_secret_key.txt
   redis_password:
     file: ./deploy/secrets/redis_password.txt
